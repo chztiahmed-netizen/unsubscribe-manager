@@ -1,9 +1,8 @@
-
 export default async function handler(request) {
   const gasUrl = process.env.APPS_SCRIPT_URL;
 
   if (!gasUrl) {
-    return new Response("Backend configuration missing.", {
+    return new Response("ERROR: APPS_SCRIPT_URL is missing.", {
       status: 500
     });
   }
@@ -19,7 +18,7 @@ export default async function handler(request) {
     const incoming = new URL(request.url);
     const target = new URL(gasUrl);
 
-    // Forward query parameters, including the Offer ID.
+    // Forward Offer ID and other query parameters.
     target.search = incoming.search;
 
     const headers = new Headers();
@@ -29,7 +28,7 @@ export default async function handler(request) {
       headers.set("Content-Type", contentType);
     }
 
-    const response = await fetch(target.toString(), {
+    const upstream = await fetch(target.toString(), {
       method: request.method,
       headers,
       body: request.method === "POST"
@@ -38,31 +37,49 @@ export default async function handler(request) {
       redirect: "follow"
     });
 
-    const responseHeaders = new Headers();
+    // Read the complete Google Apps Script response.
+    const body = await upstream.text();
 
-    responseHeaders.set(
-      "Content-Type",
-      response.headers.get("Content-Type") ||
-      "text/html; charset=utf-8"
-    );
+    console.log("Apps Script status:", upstream.status);
+    console.log("Apps Script content type:",
+      upstream.headers.get("content-type"));
+    console.log("Apps Script response length:", body.length);
 
-    responseHeaders.set("Cache-Control", "no-store");
-    responseHeaders.set("X-Content-Type-Options", "nosniff");
+    if (!body.trim()) {
+      console.error("Apps Script returned an empty response.");
 
-    return new Response(response.body, {
-      status: response.status,
-      headers: responseHeaders
+      return new Response(
+        "ERROR: Google Apps Script returned an empty response. HTTP status: " +
+        upstream.status,
+        {
+          status: 502,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "no-store"
+          }
+        }
+      );
+    }
+
+    return new Response(body, {
+      status: upstream.status,
+      headers: {
+        "Content-Type": upstream.headers.get("content-type") ||
+          "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff"
+      }
     });
 
   } catch (error) {
     console.error("Unsubscribe proxy error:", error);
 
     return new Response(
-      "Unsubscribe service temporarily unavailable.",
+      "PROXY ERROR: " + error.message,
       {
         status: 502,
         headers: {
-          "Content-Type": "text/plain",
+          "Content-Type": "text/plain; charset=utf-8",
           "Cache-Control": "no-store"
         }
       }
@@ -70,7 +87,6 @@ export default async function handler(request) {
   }
 }
 
-// Route the public website root to this function.
 export const config = {
   path: "/",
   method: ["GET", "POST"]
