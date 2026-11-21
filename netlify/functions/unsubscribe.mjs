@@ -1,96 +1,81 @@
+
 export default async function handler(request) {
   const gasUrl = process.env.APPS_SCRIPT_URL;
 
   if (!gasUrl) {
-    return new Response("ERROR: APPS_SCRIPT_URL is missing.", {
-      status: 500
-    });
+    return Response.json(
+      { ok: false, message: "Backend configuration missing." },
+      { status: 500 }
+    );
   }
 
   if (!["GET", "POST"].includes(request.method)) {
-    return new Response("Method Not Allowed", {
-      status: 405,
-      headers: { Allow: "GET, POST" }
-    });
+    return Response.json(
+      { ok: false, message: "Method not allowed." },
+      { status: 405 }
+    );
   }
 
   try {
     const incoming = new URL(request.url);
     const target = new URL(gasUrl);
 
-    // Forward Offer ID and other query parameters.
-    target.search = incoming.search;
+    if (request.method === "GET") {
+      target.searchParams.set("offer", incoming.searchParams.get("offer") || "");
+    } else {
+      target.searchParams.set("action", "unsubscribe");
+    }
 
-    const headers = new Headers();
-    const contentType = request.headers.get("content-type");
+    const headers = {
+      Accept: "application/json"
+    };
 
-    if (contentType) {
-      headers.set("Content-Type", contentType);
+    let body;
+
+    if (request.method === "POST") {
+      headers["Content-Type"] = "application/json";
+      body = await request.text();
     }
 
     const upstream = await fetch(target.toString(), {
       method: request.method,
       headers,
-      body: request.method === "POST"
-        ? await request.arrayBuffer()
-        : undefined,
+      body,
       redirect: "follow"
     });
 
-    // Read the complete Google Apps Script response.
-    const body = await upstream.text();
-    console.log("FINAL RESPONSE URL:", upstream.url);
-console.log("HTML END:", body.slice(-1200));
-console.log("HTML TITLE:", body.match(/<title[^>]*>(.*?)<\/title>/is)?.[1] || "No title");
-console.log("HTML PREVIEW:", body.slice(0, 1200));
+    const responseText = await upstream.text();
+
     console.log("Apps Script status:", upstream.status);
-    console.log("Apps Script content type:",
-      upstream.headers.get("content-type"));
-    console.log("Apps Script response length:", body.length);
+    console.log("Apps Script final URL:", upstream.url);
+    console.log("Apps Script response:", responseText.slice(0, 1000));
 
-    if (!body.trim()) {
-      console.error("Apps Script returned an empty response.");
+    let result;
 
-      return new Response(
-        "ERROR: Google Apps Script returned an empty response. HTTP status: " +
-        upstream.status,
-        {
-          status: 502,
-          headers: {
-            "Content-Type": "text/plain; charset=utf-8",
-            "Cache-Control": "no-store"
-          }
-        }
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      throw new Error(
+        "Apps Script did not return valid JSON. Check its deployment."
       );
     }
 
-    return new Response(body, {
-      status: upstream.status,
+    return Response.json(result, {
+      status: upstream.ok ? 200 : 502,
       headers: {
-        "Content-Type": upstream.headers.get("content-type") ||
-          "text/html; charset=utf-8",
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff"
+        "Cache-Control": "no-store"
       }
     });
 
   } catch (error) {
-    console.error("Unsubscribe proxy error:", error);
+    console.error("Unsubscribe API error:", error);
 
-    return new Response(
-      "PROXY ERROR: " + error.message,
+    return Response.json(
       {
-        status: 502,
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Cache-Control": "no-store"
-        }
-      }
+        ok: false,
+        message: error.message || "Unsubscribe service unavailable."
+      },
+      { status: 502 }
     );
   }
 }
-
-export const config = {
-  path: "/",
-  method: ["GET", "POST"]
-};
