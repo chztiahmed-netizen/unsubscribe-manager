@@ -39,6 +39,9 @@ export default async function handler(request) {
 
     // Read the complete Google Apps Script response.
     const body = await upstream.text();
+    console.log("FINAL RESPONSE URL:", upstream.url);
+console.log("HTML END:", body.slice(-1200));
+console.log("HTML TITLE:", body.match(/<title[^>]*>(.*?)<\/title>/is)?.[1] || "No title");
 console.log("HTML PREVIEW:", body.slice(0, 1200));
     console.log("Apps Script status:", upstream.status);
     console.log("Apps Script content type:",
