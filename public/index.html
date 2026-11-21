@@ -4,9 +4,216 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Unsubscribe</title>
+  <meta name="robots" content="noindex, nofollow">
+  <title>Unsubscribe Preferences</title>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: #f4f6f9;
+      font-family: Arial, sans-serif;
+      color: #172033;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 440px;
+      padding: 36px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 8px 35px rgba(0,0,0,.07);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 25px;
+    }
+
+    p {
+      color: #64748b;
+      line-height: 1.6;
+    }
+
+    input[type="email"] {
+      width: 100%;
+      padding: 14px;
+      margin: 12px 0;
+      border: 1px solid #d8dee8;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      border: 0;
+      border-radius: 8px;
+      background: #172033;
+      color: white;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+
+    .message {
+      display: none;
+      margin-top: 18px;
+      padding: 13px;
+      border-radius: 8px;
+      line-height: 1.5;
+      background: #f1f5f9;
+    }
+
+    .trap {
+      position: absolute;
+      left: -9999px;
+    }
+
+    .footer {
+      margin-top: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+  </style>
 </head>
+
 <body>
-  <p>Unsubscribe service</p>
+  <main class="card">
+    <h1 id="title">Unsubscribe</h1>
+
+    <p id="description">
+      Enter your email address below to unsubscribe from this offer.
+    </p>
+
+    <form id="unsubscribeForm">
+      <input
+        type="email"
+        id="email"
+        placeholder="Your email address"
+        maxlength="254"
+        autocomplete="email"
+        required
+      >
+
+      <div class="trap" aria-hidden="true">
+        <input
+          type="text"
+          id="website"
+          tabindex="-1"
+          autocomplete="off"
+        >
+      </div>
+
+      <button id="submitButton" type="submit">
+        Unsubscribe
+      </button>
+    </form>
+
+    <div id="message" class="message" role="status"></div>
+
+    <div class="footer">Unsubscribe preferences</div>
+  </main>
+
+  <script>
+    const API = "/.netlify/functions/unsubscribe";
+
+    const offerId = new URLSearchParams(
+      window.location.search
+    ).get("offer") || "";
+
+    const form = document.getElementById("unsubscribeForm");
+    const button = document.getElementById("submitButton");
+    const message = document.getElementById("message");
+
+    function showMessage(text, success) {
+      message.style.display = "block";
+      message.textContent = text;
+      message.style.background = success ? "#ecfdf5" : "#fef2f2";
+      message.style.color = success ? "#166534" : "#991b1b";
+    }
+
+    async function initialize() {
+      if (!offerId) {
+        form.style.display = "none";
+        showMessage("The Offer ID is missing.", false);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          API + "?offer=" + encodeURIComponent(offerId),
+          { cache: "no-store" }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+          form.style.display = "none";
+          showMessage(
+            result.message || "This unsubscribe page is unavailable.",
+            false
+          );
+        }
+      } catch (error) {
+        form.style.display = "none";
+        showMessage("Unable to load the unsubscribe page. Please try again.", false);
+      }
+    }
+
+    form.addEventListener("submit", async function(event) {
+      event.preventDefault();
+
+      button.disabled = true;
+      button.textContent = "Processing...";
+
+      try {
+        const response = await fetch(API, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            offer: offerId,
+            email: document.getElementById("email").value,
+            website: document.getElementById("website").value
+          })
+        });
+
+        const result = await response.json();
+
+        showMessage(
+          result.message || "Your request could not be processed.",
+          result.ok === true
+        );
+
+        if (result.ok) {
+          form.style.display = "none";
+        }
+
+      } catch (error) {
+        showMessage(
+          "Unable to process your request. Please try again later.",
+          false
+        );
+      } finally {
+        button.disabled = false;
+        button.textContent = "Unsubscribe";
+      }
+    });
+
+    initialize();
+  </script>
 </body>
 </html>
